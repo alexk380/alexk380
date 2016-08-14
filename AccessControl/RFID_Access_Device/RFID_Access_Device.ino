@@ -19,8 +19,8 @@
 #define LOG_TO_SERIAL       1
 
 #define REDPIN 6    //
-#define GREENPIN 7  //
-#define RELAY 5     // Pin for Relay
+#define GREENPIN 5  //
+#define RELAY 4     // Pin for Relay
 
 const int cardArrSize = 200;                        // default is 200 cards
 const int cardSize    = 4;            
@@ -28,6 +28,7 @@ byte cardArr[cardArrSize][cardSize];
 byte masterCard[cardSize] = {0xC7,0x69,0x4C,0x75};
 byte readCard[cardSize];
 byte cardsStored = 0;
+int  address = 0;
 
 // Create MFRC522 instance
 MFRC522 mfrc522(SS_PIN, RST_PIN);
@@ -86,17 +87,20 @@ void addReadCard()
   int cardIndex;
   int index;
 
-  if (cardsStored <= 20)
+  if (cardsStored <= cardArrSize) // if less than maximum number of cards
   {
     cardsStored++;
     cardIndex = cardsStored;
-    cardIndex--;
+    cardIndex--;                      // array index for new card to be stored 
+ 
+    for(index = 0; index < 4; index++)  // saving card's uid
+    {
+      cardArr[cardIndex][index] = readCard[index];
+    }
   }
 
-  for(index = 0; index < 4; index++)
-  {
-    cardArr[cardIndex][index] = readCard[index];
-  }
+  StoreCardsToEEPROM();
+  
 }
 
 //------------------------------------------------------------------------------------
@@ -127,6 +131,8 @@ void removeReadCard()
   {
     cardsStored--;
   }
+
+  StoreCardsToEEPROM();
 }
 
 //------------------------------------------------------------------------------------
@@ -158,7 +164,7 @@ void updateState(byte aState)
       //lcd.setCursor(0,1);
       //lcd.print("to be swiped");
       if (LOG_TO_SERIAL) Serial.println("Waiting for Card to be swiped");
-      StateWaitTime = 0;
+      StateWaitTime = 50;
       digitalWrite(REDPIN, LOW);
       digitalWrite(GREENPIN, LOW);
       digitalWrite(RELAY, LOW);
@@ -262,6 +268,66 @@ void updateState(byte aState)
   LastStateChangeTime = millis();
 }
 
+void ReadCardsFromEEPROM()
+{
+  int index;
+  
+  //read saved cards from EEPROM
+  address = 0;
+  cardsStored = EEPROM.read(address);
+  
+  address++;
+
+  for (index = 0; index < cardsStored; index++)
+  {
+    cardArr[index][0] = EEPROM.read(address); address++;
+    delay(500);
+    cardArr[index][1] = EEPROM.read(address); address++;
+    delay(500);
+    cardArr[index][2] = EEPROM.read(address); address++;
+    delay(500);
+    cardArr[index][3] = EEPROM.read(address); address++;
+    delay(500);
+  }
+
+  if (LOG_TO_SERIAL) 
+  {
+    
+    Serial.print(cardsStored);
+    Serial.println(" - cards read from EEPROM");
+  }
+}
+
+void StoreCardsToEEPROM()
+{
+  address = 1;
+  int mem_size = EEPROM.length();
+  int index;
+  
+  for (index = 0; index < cardsStored; index++)
+  {
+    EEPROM.write(address, cardArr[index][0]); address++;
+    delay(500);
+    EEPROM.write(address, cardArr[index][1]); address++;
+    delay(500);
+    EEPROM.write(address, cardArr[index][2]); address++;
+    delay(500);
+    EEPROM.write(address, cardArr[index][3]); address++;
+    delay(500);
+  }
+
+  EEPROM.write(0, cardsStored);
+
+  if (LOG_TO_SERIAL) 
+  {
+    
+    Serial.print(cardsStored);
+    Serial.print(" - cards saved in EEPROM (total memory size is ");
+    Serial.print(mem_size);
+    Serial.println(" bytes)");
+  }
+}
+
 void setup() 
 {
   SPI.begin();         // Init SPI Bus
@@ -275,8 +341,12 @@ void setup()
   pinMode(REDPIN, OUTPUT);
   pinMode(GREENPIN, OUTPUT);
   pinMode(RELAY, OUTPUT);
-
+ 
   Serial.begin(9600);
+  delay(1000);
+  
+  ReadCardsFromEEPROM();
+  
 }
 
 void loop() 
